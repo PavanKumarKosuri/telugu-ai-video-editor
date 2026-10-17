@@ -38,7 +38,7 @@ const upload = multer({
     } else if (file.fieldname === 'music' && file.mimetype.startsWith('audio/')) {
       callback(null, true);
     } else {
-      callback(new Error('Unsupported media type. Upload supported video clips and optional audio only.'));
+      callback(Object.assign(new Error('Unsupported media type. Upload supported video clips and optional audio only.'), { status: 400 }));
     }
   },
 });
@@ -388,7 +388,7 @@ app.get('/api/jobs/:id/assets/:filename', async (request, response, next) => {
 });
 
 app.use(express.static(path.resolve('dist')));
-app.get('*path', (_request, response, next) => {
+app.get('/{*path}', (_request, response, next) => {
   if (_request.path.startsWith('/api/')) return next();
   response.sendFile(path.resolve('dist/index.html'), error => error && next(error));
 });

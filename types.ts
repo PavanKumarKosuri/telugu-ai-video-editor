@@ -28,6 +28,7 @@ export interface ReelCandidate {
   duration: number;
   aspectRatio: '9:16' | '1:1' | '16:9';
   previewUrl: string;
+  downloadUrl: string;
   hook: string;
   isFavorite: boolean;
 }

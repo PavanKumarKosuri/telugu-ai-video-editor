@@ -1,20 +1,28 @@
-<div align="center">
-<img width="1200" height="475" alt="GHBanner" src="https://github.com/user-attachments/assets/0aa67016-6eaf-458a-adb2-6e31a0763ed6" />
-</div>
+# AI Telugu Video Compiler
 
-# Run and deploy your AI Studio app
+A React/Vite frontend with a Node API for analyzing Telugu video clips, compiling them into a 720p video, generating highlight reels, and exporting caption subtitles.
 
-This contains everything you need to run your app locally.
+## Requirements
 
-View your app in AI Studio: https://ai.studio/apps/drive/1gVQRB17ZM0SDl2nPD7-1b7qrHaJh610o
+- Node.js 22 or newer
+- FFmpeg and FFprobe installed and available on `PATH`
+- A Gemini API key with access to the Gemini Files API and `gemini-2.5-flash`
 
-## Run Locally
+## Run locally
 
-**Prerequisites:**  Node.js
+1. Install packages: `npm install`
+2. Put `GEMINI_API_KEY=your-key` in `.env.local` (this file is ignored by Git).
+3. In one terminal, run `npm run dev:server`.
+4. In another terminal, run `npm run dev` and open the Vite URL (normally `http://localhost:3000`).
 
+The Vite development server proxies `/api` requests to the local API on port 3001. For production, run `npm run build`, then `npm run server`; the API serves the built frontend and its endpoints on port 3001. Set `PORT` to change the API port.
 
-1. Install dependencies:
-   `npm install`
-2. Set the `GEMINI_API_KEY` in [.env.local](.env.local) to your Gemini API key
-3. Run the app:
-   `npm run dev`
+Run unit tests with `npm test`.
+
+## MVP behavior and limitations
+
+- Upload up to five supported clips, each no larger than 500 MB. Jobs and generated outputs are stored temporarily on the server and removed after 24 hours; they are not backed up or shared across server instances.
+- Gemini analyzes each clip for Telugu/English captions, chapter titles, and highlight timestamps. FFmpeg normalizes and concatenates all uploaded clips, extracts the selected highlight reels, generates chapter thumbnails, and writes an SRT caption file.
+- The long video is currently a 720p concatenation of the complete clips; it does not yet remove unwanted sections, burn captions into the video, or apply visual color-grade presets. Only uploaded custom music is mixed into the final video; the named music styles are not generated audio.
+- Processing requires network access to Gemini. Keep the API key in the server environment; it is never embedded in the frontend bundle. Uploaded video is sent to Gemini for analysis.
+- Use a private, persistent storage provider, authentication, quotas, and a background job queue before exposing this prototype to multiple users or deploying it publicly.

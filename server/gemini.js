@@ -1,6 +1,6 @@
 import { GoogleGenAI, Type } from '@google/genai';
 
-const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY || '' });
+let ai;
 const sleep = milliseconds => new Promise(resolve => setTimeout(resolve, milliseconds));
 
 const analysisSchema = {
@@ -52,6 +52,7 @@ export async function analyzeVideo(filePath, mimeType, duration, prompt) {
     throw new Error('Set GEMINI_API_KEY in .env.local before processing videos.');
   }
 
+  ai ||= new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
   const uploaded = await ai.files.upload({
     file: filePath,
     config: { mimeType },
