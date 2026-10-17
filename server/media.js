@@ -20,3 +20,11 @@ export function clampInterval(interval, duration) {
 
   return { ...interval, start, end };
 }
+
+export function getHighlightWindow(highlight, requestedDuration, timelineDuration) {
+  const duration = Math.min(Math.max(0.1, requestedDuration), Math.max(0.1, timelineDuration));
+  const center = (highlight.start + highlight.end) / 2;
+  const start = Math.max(0, Math.min(center - duration / 2, timelineDuration - duration));
+
+  return { start, end: start + duration };
+}

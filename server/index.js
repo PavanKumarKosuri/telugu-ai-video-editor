@@ -8,7 +8,7 @@ import express from 'express';
 import rateLimit from 'express-rate-limit';
 import multer from 'multer';
 import { analyzeVideo } from './gemini.js';
-import { clampInterval, createSrt } from './media.js';
+import { clampInterval, createSrt, getHighlightWindow } from './media.js';
 
 const execFileAsync = promisify(execFile);
 const app = express();
@@ -275,8 +275,9 @@ async function buildJob(job, clips, musicFile, options) {
   const reels = [];
   const maxReels = Math.min(10, Math.max(1, Number(options.reelsToGenerate) || 3));
   for (const [index, highlight] of highlights.slice(0, maxReels).entries()) {
-    const start = Math.min(highlight.start, Math.max(0, timelineOffset - 0.1));
-    const duration = Math.min(options.duration, Math.max(0.1, timelineOffset - start));
+    const reelWindow = getHighlightWindow(highlight, options.duration, timelineOffset);
+    const start = reelWindow.start;
+    const duration = reelWindow.end - reelWindow.start;
     const filename = `reel-${index + 1}.mp4`;
     const dimensions = reelDimensions(options.aspectRatio);
     const [width, height] = dimensions.split(':');
@@ -318,6 +319,7 @@ async function buildJob(job, clips, musicFile, options) {
     title: safeLabel(options.title, 'Telugu video'),
     chapters,
     reels,
+    captions,
     videoUrl: `/api/jobs/${job.id}/assets/long-video.mp4`,
     videoDownloadUrl: `/api/jobs/${job.id}/assets/long-video.mp4?download=1`,
     captionsUrl: `/api/jobs/${job.id}/assets/${srtFile}?download=1`,

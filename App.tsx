@@ -1,438 +1,421 @@
-import React, { useState, useCallback } from 'react';
-import { AppState, VideoFile, Chapter, ReelCandidate } from './types';
-import { UploadCloudIcon, VideoIcon, XIcon, WandIcon, FilmIcon, DownloadIcon, MusicIcon, StarIcon } from './components/IconComponents';
+import React, { useCallback, useMemo, useState } from 'react';
+import { AppState, Chapter, ReelCandidate, VideoFile } from './types';
+import { DownloadIcon, FilmIcon, MusicIcon, StarIcon, UploadCloudIcon, VideoIcon, WandIcon, XIcon } from './components/IconComponents';
+import './studio.css';
 
-const Header = () => (
-    <header className="p-4 border-b border-gray-700">
-        <div className="container mx-auto flex items-center gap-3">
-            <FilmIcon className="w-8 h-8 text-indigo-400"/>
-            <h1 className="text-2xl font-bold tracking-tight">AI Telugu Video Compiler</h1>
-        </div>
-    </header>
-);
-
-const FileUploader = ({ onFilesAdded, onError }: { onFilesAdded: (files: VideoFile[]) => void; onError: (message: string) => void }) => {
-    const [isDragging, setIsDragging] = useState(false);
-
-    const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-        if (e.target.files) {
-            processFiles(Array.from(e.target.files));
-        }
-    };
-
-    const handleDrop = (e: React.DragEvent<HTMLDivElement>) => {
-        e.preventDefault();
-        e.stopPropagation();
-        setIsDragging(false);
-        if (e.dataTransfer.files) {
-            processFiles(Array.from(e.dataTransfer.files));
-        }
-    };
-
-    const processFiles = (files: File[]) => {
-        const invalidFiles = files.filter(file => !file.type.startsWith('video/'));
-        if (invalidFiles.length > 0) {
-            onError('Only video files can be uploaded.');
-        }
-        const videoFiles = files
-            .filter(file => file.type.startsWith('video/'))
-            .filter(file => {
-                if (file.size > 500 * 1024 * 1024) {
-                    onError(`${file.name} is larger than the 500 MB per-clip limit.`);
-                    return false;
-                }
-                return true;
-            })
-            .map(file => ({
-                id: crypto.randomUUID(),
-                file,
-                name: file.name,
-                size: file.size,
-                previewUrl: URL.createObjectURL(file),
-                progress: 0,
-            }));
-        if(videoFiles.length > 5) {
-            videoFiles.forEach(file => URL.revokeObjectURL(file.previewUrl));
-            onError('You can upload up to 5 clips per project.');
-        } else if(videoFiles.length > 0) {
-            onFilesAdded(videoFiles);
-        }
-    };
-
-    const highlight = (e: React.DragEvent<HTMLDivElement>) => {
-        e.preventDefault();
-        e.stopPropagation();
-        setIsDragging(true);
-    };
-
-    const unhighlight = (e: React.DragEvent<HTMLDivElement>) => {
-        e.preventDefault();
-        e.stopPropagation();
-        setIsDragging(false);
-    };
-
-    return (
-        <div 
-            className={`w-full max-w-3xl mx-auto mt-10 p-8 border-2 border-dashed rounded-xl transition-all duration-300 ${isDragging ? 'border-indigo-400 bg-gray-800/50' : 'border-gray-600'}`}
-            onDrop={handleDrop}
-            onDragOver={highlight}
-            onDragLeave={unhighlight}
-        >
-            <div className="flex flex-col items-center justify-center text-center">
-                <UploadCloudIcon className="w-16 h-16 text-gray-500 mb-4" />
-                <h3 className="text-xl font-semibold text-gray-200">Drag & drop your video clips here</h3>
-                <p className="text-gray-400 mt-1">or</p>
-                <label htmlFor="file-upload" className="mt-4 px-6 py-2 bg-indigo-600 text-white font-semibold rounded-lg cursor-pointer hover:bg-indigo-500 transition-colors">
-                    Browse Files
-                </label>
-                <input id="file-upload" type="file" multiple accept="video/*" className="hidden" onChange={handleFileChange} />
-                <p className="text-xs text-gray-500 mt-4">Supports MP4, MOV, AVI, and other major video formats.</p>
-            </div>
-        </div>
-    );
-};
-
-interface UploadedFileItemProps {
-    file: VideoFile;
-    onRemove: (id: string) => void;
-}
-
-const UploadedFileItem: React.FC<UploadedFileItemProps> = ({ file, onRemove }) => {
-    return (
-        <div className="bg-gray-800 p-3 rounded-lg flex items-center justify-between gap-4 animate-fade-in">
-            <div className="flex items-center gap-4 truncate">
-                <div className="bg-gray-700 w-16 h-10 rounded flex items-center justify-center">
-                    <VideoIcon className="w-6 h-6 text-gray-400"/>
-                </div>
-                <div className="truncate">
-                    <p className="text-sm font-medium text-white truncate">{file.name}</p>
-                    <p className="text-xs text-gray-400">{(file.size / (1024 * 1024)).toFixed(2)} MB</p>
-                </div>
-            </div>
-            <div className="flex items-center gap-2">
-                <button onClick={() => onRemove(file.id)} className="text-gray-500 hover:text-red-400 p-1 rounded-full transition-colors">
-                    <XIcon className="w-4 h-4" />
-                </button>
-            </div>
-        </div>
-    );
-};
-
-const ConfigurationScreen = ({ onStartProcessing, clipsCount }: { onStartProcessing: (prompt: string, preset: string, music: { style: string; file?: File }, reelAspectRatio: '9:16' | '1:1' | '16:9', reelDuration: 15 | 30 | 60) => void, clipsCount: number }) => {
-    const [prompt, setPrompt] = useState('Make a 8-min vlog, keep food scenes, remove chitchat, Telugu captions + 3 reels');
-    const [selectedMusic, setSelectedMusic] = useState<{ style: string; file?: File }>({ style: 'AI Suggested' });
-    const [reelAspectRatio, setReelAspectRatio] = useState<'9:16' | '1:1' | '16:9'>('9:16');
-    const [reelDuration, setReelDuration] = useState<15 | 30 | 60>(30);
-    
-    const presets = ["Cinematic Warm", "Social Punch", "Vintage Film", "Natural & Clean"];
-    const musicStyles = ["Cinematic", "Upbeat Lofi", "Telugu Folk", "Ambient"];
-
-    const handleMusicStyleSelect = (style: string) => {
-        setSelectedMusic({ style });
-    };
-
-    const handleCustomMusicUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
-        if (e.target.files && e.target.files[0]) {
-            const file = e.target.files[0];
-            setSelectedMusic({ style: file.name, file });
-            e.target.value = '';
-        }
-    };
-
-    const startWithPreset = (p: string) => {
-        onStartProcessing('', p, selectedMusic, reelAspectRatio, reelDuration);
-    }
-
-    const startWithPrompt = () => {
-        onStartProcessing(prompt, '', selectedMusic, reelAspectRatio, reelDuration);
-    }
-
-    return (
-        <div className="container mx-auto px-4 py-8 animate-fade-in">
-            <h2 className="text-3xl font-bold text-center">Configure Your Video</h2>
-            <p className="text-center text-gray-400 mt-2">You've uploaded {clipsCount} clips. Now, tell the AI how to edit them.</p>
-
-            <div className="max-w-4xl mx-auto mt-8">
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-                    <div className="bg-gray-800/50 p-6 rounded-xl border border-gray-700">
-                        <h3 className="text-xl font-semibold flex items-center gap-2"><WandIcon className="w-6 h-6 text-indigo-400"/> Use a Quick Preset</h3>
-                        <p className="text-gray-400 text-sm mt-2 mb-4">Select a style and our AI will handle the rest.</p>
-                        <div className="grid grid-cols-2 gap-3">
-                            {presets.map(p => (
-                                <button key={p} onClick={() => startWithPreset(p)} className="w-full text-center py-3 px-4 bg-gray-700 rounded-lg hover:bg-indigo-600 hover:text-white transition-all font-medium">
-                                    {p}
-                                </button>
-                            ))}
-                        </div>
-                    </div>
-                    <div className="bg-gray-800/50 p-6 rounded-xl border border-gray-700 flex flex-col">
-                        <h3 className="text-xl font-semibold">Or, Give Free-Text Instructions</h3>
-                        <p className="text-gray-400 text-sm mt-2 mb-4">Describe your desired video in plain language.</p>
-                        <textarea 
-                            value={prompt}
-                            onChange={(e) => setPrompt(e.target.value)}
-                            className="flex-grow bg-gray-900 border border-gray-600 rounded-lg p-3 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-all text-sm"
-                            placeholder="e.g., 'Create a cinematic travel video with slow-motion shots and Telugu subtitles...'"
-                            rows={5}
-                        />
-                        <button onClick={startWithPrompt} className="mt-4 w-full bg-indigo-600 text-white font-semibold py-3 rounded-lg hover:bg-indigo-500 transition-colors">
-                            Generate with My Instructions
-                        </button>
-                    </div>
-                </div>
-
-                <div className="bg-gray-800/50 p-6 rounded-xl border border-gray-700 mt-8">
-                    <h3 className="text-xl font-semibold flex items-center gap-2"><MusicIcon className="w-6 h-6 text-indigo-400"/> Select Background Music</h3>
-                    <p className="text-gray-400 text-sm mt-2 mb-4">Choose a style, upload your own, or let the AI decide.</p>
-                    <div className="grid grid-cols-2 md:grid-cols-6 gap-3">
-                        <button onClick={() => handleMusicStyleSelect('AI Suggested')} className={`w-full text-center py-3 px-4 rounded-lg transition-all font-medium ${selectedMusic.style === 'AI Suggested' && !selectedMusic.file ? 'bg-indigo-600 text-white' : 'bg-gray-700 hover:bg-gray-600'}`}>
-                            AI Suggested
-                        </button>
-                        {musicStyles.map(style => (
-                            <button key={style} onClick={() => handleMusicStyleSelect(style)} className={`w-full text-center py-3 px-4 rounded-lg transition-all font-medium ${selectedMusic.style === style ? 'bg-indigo-600 text-white' : 'bg-gray-700 hover:bg-gray-600'}`}>
-                                {style}
-                            </button>
-                        ))}
-                        <label htmlFor="music-upload" className="w-full text-center py-3 px-4 bg-gray-700 rounded-lg hover:bg-indigo-600 hover:text-white transition-all font-medium cursor-pointer">
-                            Upload
-                        </label>
-                        <input id="music-upload" type="file" accept="audio/*" className="hidden" onChange={handleCustomMusicUpload} />
-                    </div>
-                     <p className="text-sm text-gray-400 mt-4 truncate">Selection: <span className="font-medium text-indigo-300">{selectedMusic.style}</span></p>
-                </div>
-                
-                <div className="bg-gray-800/50 p-6 rounded-xl border border-gray-700 mt-8">
-                    <h3 className="text-xl font-semibold flex items-center gap-2"><FilmIcon className="w-6 h-6 text-indigo-400"/> Reel & Shorts Settings</h3>
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mt-4">
-                        <div>
-                            <p className="text-gray-400 text-sm mb-2 font-medium">Aspect Ratio</p>
-                             <div className="grid grid-cols-3 gap-3">
-                                <button onClick={() => setReelAspectRatio('9:16')} className={`py-3 px-4 rounded-lg font-medium transition-colors ${reelAspectRatio === '9:16' ? 'bg-indigo-600 text-white' : 'bg-gray-700 hover:bg-gray-600'}`}>9:16</button>
-                                <button onClick={() => setReelAspectRatio('1:1')} className={`py-3 px-4 rounded-lg font-medium transition-colors ${reelAspectRatio === '1:1' ? 'bg-indigo-600 text-white' : 'bg-gray-700 hover:bg-gray-600'}`}>1:1</button>
-                                <button onClick={() => setReelAspectRatio('16:9')} className={`py-3 px-4 rounded-lg font-medium transition-colors ${reelAspectRatio === '16:9' ? 'bg-indigo-600 text-white' : 'bg-gray-700 hover:bg-gray-600'}`}>16:9</button>
-                            </div>
-                        </div>
-                        <div>
-                           <p className="text-gray-400 text-sm mb-2 font-medium">Duration</p>
-                             <div className="grid grid-cols-3 gap-3">
-                                <button onClick={() => setReelDuration(15)} className={`py-3 px-4 rounded-lg font-medium transition-colors ${reelDuration === 15 ? 'bg-indigo-600 text-white' : 'bg-gray-700 hover:bg-gray-600'}`}>15s</button>
-                                <button onClick={() => setReelDuration(30)} className={`py-3 px-4 rounded-lg font-medium transition-colors ${reelDuration === 30 ? 'bg-indigo-600 text-white' : 'bg-gray-700 hover:bg-gray-600'}`}>30s</button>
-                                <button onClick={() => setReelDuration(60)} className={`py-3 px-4 rounded-lg font-medium transition-colors ${reelDuration === 60 ? 'bg-indigo-600 text-white' : 'bg-gray-700 hover:bg-gray-600'}`}>60s</button>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            </div>
-        </div>
-    );
-};
-
-
-const ProcessingScreen = ({ status }: { status: string }) => (
-    <div className="flex flex-col items-center justify-center h-[60vh] text-center animate-fade-in">
-        <div className="relative flex items-center justify-center">
-            <div className="absolute w-24 h-24 rounded-full border-4 border-indigo-500 border-t-transparent animate-spin"></div>
-            <WandIcon className="w-12 h-12 text-indigo-400"/>
-        </div>
-        <h2 className="text-2xl font-bold mt-8">AI is working its magic...</h2>
-        <p className="text-gray-400 mt-2">{status}</p>
-    </div>
-);
-
-const ReviewScreen = ({ chapters, reels, videoUrl, videoDownloadUrl, captionsUrl, onToggleFavorite, onDownloadAllReels }: {
+type AspectRatio = '9:16' | '1:1' | '16:9';
+type ReelDuration = 15 | 30 | 60;
+type CaptionCue = { start: number; end: number; text: string };
+type JobResult = {
     chapters: Chapter[];
     reels: ReelCandidate[];
+    captions: CaptionCue[];
     videoUrl: string;
     videoDownloadUrl: string;
     captionsUrl: string;
-    onToggleFavorite: (id: string) => void;
-    onDownloadAllReels: () => void;
+};
+
+const MAX_CLIPS = 5;
+const MAX_FILE_SIZE = 500 * 1024 * 1024;
+
+const formatDuration = (seconds: number) => {
+    const minutes = Math.floor(seconds / 60);
+    const remainder = Math.floor(seconds % 60);
+    return `${minutes}:${String(remainder).padStart(2, '0')}`;
+};
+
+const Header = ({ appState }: { appState: AppState }) => {
+    const steps = [
+        { state: AppState.UPLOADING, label: 'Add clips' },
+        { state: AppState.CONFIGURING, label: 'Shape the edit' },
+        { state: AppState.PROCESSING, label: 'AI studio' },
+        { state: AppState.REVIEWING, label: 'Review & export' },
+    ];
+    const activeStep = appState === AppState.UPLOADING ? 0 : appState === AppState.CONFIGURING ? 1 : appState === AppState.PROCESSING ? 2 : 3;
+
+    return (
+        <header className="studio-header">
+            <div className="studio-header-inner">
+                <a className="brand-lockup" href="/" aria-label="Katha Studio home">
+                    <span className="brand-mark"><FilmIcon className="h-5 w-5" /></span>
+                    <span><strong>Katha</strong><span className="brand-subtitle">CREATOR STUDIO</span></span>
+                </a>
+                <nav className="workflow-steps" aria-label="Editing workflow">
+                    {steps.map((step, index) => (
+                        <div className={`workflow-step ${activeStep === index ? 'is-active' : ''} ${activeStep > index ? 'is-done' : ''}`} key={step.label}>
+                            <span className="step-number">{activeStep > index ? '✓' : `0${index + 1}`}</span>
+                            <span>{step.label}</span>
+                        </div>
+                    ))}
+                </nav>
+                <span className="header-language"><span className="online-dot" /> TELUGU-FIRST AI</span>
+            </div>
+        </header>
+    );
+};
+
+const FileUploader = ({ onFilesAdded, onError, remaining }: {
+    onFilesAdded: (files: VideoFile[]) => void;
+    onError: (message: string) => void;
+    remaining: number;
 }) => {
-    const getAspectRatioClass = (ratio: '9:16' | '1:1' | '16:9') => {
-        switch (ratio) {
-            case '9:16': return 'aspect-[9/16]';
-            case '1:1': return 'aspect-square';
-            case '16:9': return 'aspect-video';
-            default: return 'aspect-[9/16]';
-        }
+    const [isDragging, setIsDragging] = useState(false);
+
+    const processFiles = (files: File[]) => {
+        const accepted: VideoFile[] = [];
+        files.forEach(file => {
+            if (!file.type.startsWith('video/')) {
+                onError(`${file.name} isn't a video file.`);
+            } else if (file.size > MAX_FILE_SIZE) {
+                onError(`${file.name} is larger than the 500 MB per-clip limit.`);
+            } else if (accepted.length >= remaining) {
+                onError(`This project supports up to ${MAX_CLIPS} clips.`);
+            } else {
+                accepted.push({
+                    id: crypto.randomUUID(),
+                    file,
+                    name: file.name,
+                    size: file.size,
+                    previewUrl: URL.createObjectURL(file),
+                    progress: 0,
+                });
+            }
+        });
+        if (accepted.length) onFilesAdded(accepted);
     };
 
     return (
-        <div className="container mx-auto px-4 py-8 animate-fade-in">
-            <h2 className="text-3xl font-bold text-center">Review Your AI-Generated Content</h2>
-            <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 mt-8">
-                <div className="lg:col-span-2">
-                    <h3 className="text-xl font-semibold mb-4">Compiled Long-Form Video</h3>
-                    <div className="aspect-video bg-black rounded-xl mb-4 overflow-hidden">
-                        <video src={videoUrl} controls className="w-full h-full"></video>
-                    </div>
-                    <div>
-                        <h4 className="font-semibold mb-2">AI-Detected Chapters:</h4>
-                        <div className="space-y-2">
-                            {chapters.map(c => (
-                                <div key={c.id} className="bg-gray-800 p-3 rounded-lg flex items-center gap-4">
-                                    <img src={c.thumbnailUrl} alt={c.title} className="w-24 h-14 object-cover rounded"/>
-                                    <div>
-                                        <p className="font-medium">{c.title}</p>
-                                        <p className="text-sm text-gray-400">{c.startTime} - {c.endTime}</p>
-                                    </div>
-                                </div>
-                            ))}
-                        </div>
-                    </div>
-                </div>
-                <div>
-                    <h3 className="text-xl font-semibold mb-4">Generated Reels</h3>
-                    <div className="space-y-4 max-h-[70vh] overflow-y-auto pr-2">
-                        {reels.map(r => (
-                            <div key={r.id} className="bg-gray-800 rounded-xl p-3">
-                                <div className={`${getAspectRatioClass(r.aspectRatio)} bg-black rounded-lg mb-2 flex items-center justify-center overflow-hidden`}>
-                                    <video src={r.previewUrl} controls className="w-full h-full object-cover"></video>
-                                </div>
-                                <div className="flex justify-between items-center">
-                                    <p className="font-semibold text-sm truncate pr-2">{r.title}</p>
-                                    <div className="flex items-center gap-2">
-                                        <span className="text-xs font-mono bg-gray-700 px-1.5 py-0.5 rounded text-gray-300">{r.duration}s</span>
-                                        <a href={r.downloadUrl} className="text-xs text-indigo-300 hover:text-white" download>Download</a>
-                                        <button onClick={() => onToggleFavorite(r.id)} className={`p-1 rounded-full transition-colors ${r.isFavorite ? 'text-yellow-400 hover:text-yellow-300' : 'text-gray-500 hover:text-yellow-400'}`}>
-                                            <StarIcon className="w-5 h-5" filled={r.isFavorite} />
-                                        </button>
-                                    </div>
-                                </div>
-                                <p className="text-xs text-gray-400 mt-1">Hook: "{r.hook}"</p>
-                            </div>
-                        ))}
-                    </div>
-                </div>
+        <div
+            className={`upload-zone ${isDragging ? 'is-dragging' : ''}`}
+            onDrop={event => {
+                event.preventDefault();
+                setIsDragging(false);
+                processFiles(Array.from(event.dataTransfer.files));
+            }}
+            onDragOver={event => { event.preventDefault(); setIsDragging(true); }}
+            onDragLeave={event => { event.preventDefault(); setIsDragging(false); }}
+        >
+            <div className="upload-art" aria-hidden="true">
+                <span className="upload-art-ring"><UploadCloudIcon className="h-8 w-8" /></span>
+                <span className="upload-art-spark">✦</span>
             </div>
-            <div className="mt-12 text-center">
-                 <h3 className="text-xl font-semibold mb-4">Export Your Files</h3>
-                 <div className="flex justify-center items-center gap-4">
-                    <a href={videoDownloadUrl} className="flex items-center gap-2 bg-green-600 hover:bg-green-500 text-white font-bold py-3 px-6 rounded-lg transition-colors" download>
-                        <DownloadIcon className="w-5 h-5"/> Export Long Video (720p)
-                    </a>
-                    <button onClick={onDownloadAllReels} className="flex items-center gap-2 bg-gray-700 hover:bg-gray-600 text-white font-bold py-3 px-6 rounded-lg transition-colors">
-                        <DownloadIcon className="w-5 h-5"/> Export All Reels
-                    </button>
-                    <a href={captionsUrl} className="flex items-center gap-2 bg-gray-700 hover:bg-gray-600 text-white font-bold py-3 px-6 rounded-lg transition-colors" download>
-                        <DownloadIcon className="w-5 h-5"/> Download Captions (.srt)
-                    </a>
-                 </div>
-            </div>
+            <h3>Every great story starts with a clip.</h3>
+            <p>Drop your video clips here, or browse your device. We’ll find the moments worth sharing.</p>
+            <label className="button button-primary upload-browse" htmlFor="file-upload">Choose video clips</label>
+            <input id="file-upload" type="file" multiple accept="video/*" className="sr-only" onChange={event => {
+                if (event.target.files) processFiles(Array.from(event.target.files));
+                event.target.value = '';
+            }} />
+            <div className="upload-specs"><span>MP4 · MOV · WEBM</span><span>UP TO 500 MB EACH</span><span>{remaining} {remaining === 1 ? 'SLOT' : 'SLOTS'} LEFT</span></div>
         </div>
     );
 };
 
+const ClipList = ({ files, onRemove, onMove, onFilesAdded, onError }: {
+    files: VideoFile[];
+    onRemove: (id: string) => void;
+    onMove: (index: number, direction: -1 | 1) => void;
+    onFilesAdded: (files: VideoFile[]) => void;
+    onError: (message: string) => void;
+}) => {
+    const [durations, setDurations] = useState<Record<string, number>>({});
+    const totalDuration = Object.values(durations).reduce((sum, duration) => sum + duration, 0);
+
+    return (
+        <section className="panel clip-panel">
+            <div className="section-heading">
+                <div><span className="eyebrow">YOUR FOOTAGE</span><h2>Storyline clips <span className="count-pill">{files.length}/{MAX_CLIPS}</span></h2></div>
+                <span className="duration-summary">{totalDuration ? `~${formatDuration(totalDuration)} total` : 'Order sets your story'}</span>
+            </div>
+            <p className="section-copy">Arrange clips in the order you want them to play. Your original files stay on your device until you start.</p>
+            <div className="clip-list">
+                {files.map((item, index) => (
+                    <article className="clip-row" key={item.id}>
+                        <div className="clip-order">{String(index + 1).padStart(2, '0')}</div>
+                        <div className="clip-thumb">
+                            <video src={item.previewUrl} muted preload="metadata" onLoadedMetadata={event => {
+                                const duration = event.currentTarget.duration;
+                                if (Number.isFinite(duration)) setDurations(current => ({ ...current, [item.id]: duration }));
+                            }} />
+                            <span>{durations[item.id] ? formatDuration(durations[item.id]) : 'VIDEO'}</span>
+                        </div>
+                        <div className="clip-info"><strong title={item.name}>{item.name}</strong><span>{(item.size / (1024 * 1024)).toFixed(1)} MB · Ready to edit</span></div>
+                        <div className="clip-actions">
+                            <button className="icon-button" aria-label={`Move ${item.name} up`} disabled={index === 0} onClick={() => onMove(index, -1)}>↑</button>
+                            <button className="icon-button" aria-label={`Move ${item.name} down`} disabled={index === files.length - 1} onClick={() => onMove(index, 1)}>↓</button>
+                            <button className="icon-button remove-button" aria-label={`Remove ${item.name}`} onClick={() => onRemove(item.id)}><XIcon className="h-4 w-4" /></button>
+                        </div>
+                    </article>
+                ))}
+            </div>
+            {files.length < MAX_CLIPS && (
+                <FileUploader onFilesAdded={onFilesAdded} onError={onError} remaining={MAX_CLIPS - files.length} />
+            )}
+        </section>
+    );
+};
+
+const ConfigurationScreen = ({ clipsCount, onStart, disabled }: {
+    clipsCount: number;
+    onStart: (settings: { prompt: string; preset: string; title: string; music?: File; aspectRatio: AspectRatio; duration: ReelDuration; reelCount: number }) => void;
+    disabled: boolean;
+}) => {
+    const [prompt, setPrompt] = useState('Keep the food and family moments. Find the funniest Telugu lines, skip long pauses, and make the story feel warm.');
+    const [title, setTitle] = useState('My Telugu story');
+    const [preset, setPreset] = useState('Creator story');
+    const [music, setMusic] = useState<File>();
+    const [aspectRatio, setAspectRatio] = useState<AspectRatio>('9:16');
+    const [duration, setDuration] = useState<ReelDuration>(30);
+    const [reelCount, setReelCount] = useState(3);
+
+    const presets = [
+        { name: 'Creator story', description: 'Natural pacing, warm and personal', icon: '◉' },
+        { name: 'Social energy', description: 'Fast cuts, big moments, punchy hooks', icon: '↗' },
+        { name: 'Cinematic', description: 'Unhurried, visual, film-inspired mood', icon: '▧' },
+    ];
+
+    const start = () => onStart({ prompt, preset, title, music, aspectRatio, duration, reelCount });
+
+    return (
+        <section className="panel configuration-panel">
+            <div className="section-heading"><div><span className="eyebrow">MAKE IT YOURS</span><h2>Set the creative direction</h2></div><span className="ai-chip"><WandIcon className="h-4 w-4" /> AI ASSISTED</span></div>
+            <p className="section-copy">Your clips are understood in context, including Telugu speech. You stay in control of the final cut.</p>
+            <label className="field-label" htmlFor="project-title">PROJECT TITLE</label>
+            <input id="project-title" className="text-field" maxLength={100} value={title} onChange={event => setTitle(event.target.value)} placeholder="Give your story a name" />
+
+            <div className="field-label spaced-label">START WITH A STYLE</div>
+            <div className="preset-grid">
+                {presets.map(item => (
+                    <button key={item.name} className={`preset-card ${preset === item.name ? 'is-selected' : ''}`} onClick={() => setPreset(item.name)} aria-pressed={preset === item.name}>
+                        <span className="preset-icon">{item.icon}</span><strong>{item.name}</strong><span>{item.description}</span>
+                    </button>
+                ))}
+            </div>
+
+            <label className="field-label spaced-label" htmlFor="edit-prompt">TELL KATHA WHAT MATTERS</label>
+            <textarea id="edit-prompt" className="text-field prompt-field" maxLength={2000} value={prompt} onChange={event => setPrompt(event.target.value)} placeholder="Describe moments to keep, pacing, language, or anything to avoid…" />
+            <div className="field-hint">Specific instructions help the AI choose stronger chapters and highlights.</div>
+
+            <div className="option-divider" />
+            <div className="options-grid">
+                <div>
+                    <span className="field-label">REEL FORMAT</span>
+                    <div className="segmented-control">
+                        {(['9:16', '1:1', '16:9'] as const).map(ratio => <button key={ratio} className={aspectRatio === ratio ? 'is-selected' : ''} onClick={() => setAspectRatio(ratio)} aria-pressed={aspectRatio === ratio}>{ratio}</button>)}
+                    </div>
+                    <div className="field-hint">Vertical · Square · Landscape</div>
+                </div>
+                <div>
+                    <span className="field-label">MAX REEL LENGTH</span>
+                    <div className="segmented-control">
+                        {([15, 30, 60] as const).map(value => <button key={value} className={duration === value ? 'is-selected' : ''} onClick={() => setDuration(value)} aria-pressed={duration === value}>{value}s</button>)}
+                    </div>
+                    <div className="field-hint">Each highlight stays focused on its moment.</div>
+                </div>
+            </div>
+            <div className="option-bottom">
+                <div className="reel-count-control">
+                    <span className="field-label">REELS TO CREATE</span>
+                    <div className="count-stepper">
+                        <button aria-label="Create fewer reels" disabled={reelCount <= 1} onClick={() => setReelCount(value => Math.max(1, value - 1))}>−</button>
+                        <strong>{reelCount}</strong>
+                        <button aria-label="Create more reels" disabled={reelCount >= 10} onClick={() => setReelCount(value => Math.min(10, value + 1))}>+</button>
+                    </div>
+                </div>
+                <div className="music-upload-control">
+                    <span className="field-label">BACKGROUND MUSIC</span>
+                    <label className="music-file-picker">
+                        <MusicIcon className="h-5 w-5" />
+                        <span>{music ? music.name : 'Add your own track'}</span>
+                        {music && <button type="button" className="clear-music" aria-label="Remove background music" onClick={event => { event.preventDefault(); setMusic(undefined); }}>×</button>}
+                        <input type="file" accept="audio/*" className="sr-only" onChange={event => setMusic(event.target.files?.[0])} />
+                    </label>
+                    <div className="field-hint">Optional · Original audio stays audible</div>
+                </div>
+            </div>
+            <button className="button button-primary generate-button" onClick={start} disabled={disabled || !title.trim() || !clipsCount}>
+                <WandIcon className="h-5 w-5" /> Create my first cut <span aria-hidden="true">→</span>
+            </button>
+            <p className="privacy-note">Your footage is processed privately for this job and automatically removed after 24 hours.</p>
+        </section>
+    );
+};
+
+const ProcessingScreen = ({ status, progress }: { status: string; progress: number }) => (
+    <section className="panel processing-panel">
+        <div className="processing-orbit"><span /><span /><span /><WandIcon className="h-8 w-8" /></div>
+        <span className="eyebrow">KATHA AI STUDIO</span>
+        <h2>Your story is taking shape.</h2>
+        <p>{status}</p>
+        <div className="progress-track" role="progressbar" aria-valuenow={progress} aria-valuemin={0} aria-valuemax={100}><span style={{ width: `${progress}%` }} /></div>
+        <div className="progress-meta"><span>Processing your footage</span><strong>{progress}%</strong></div>
+        <div className="processing-steps">
+            {['Understand Telugu dialogue', 'Find chapters & standout moments', 'Build your compilation & reels', 'Prepare captions & exports'].map((step, index) => (
+                <div key={step} className={progress >= [20, 45, 68, 95][index] ? 'step-complete' : ''}><span>{progress >= [20, 45, 68, 95][index] ? '✓' : `0${index + 1}`}</span>{step}</div>
+            ))}
+        </div>
+    </section>
+);
+
+const ReviewScreen = ({ result, title, onToggleFavorite, onDownloadAllReels, onStartOver }: {
+    result: JobResult;
+    title: string;
+    onToggleFavorite: (id: string) => void;
+    onDownloadAllReels: () => void;
+    onStartOver: () => void;
+}) => {
+    const [showAllCaptions, setShowAllCaptions] = useState(false);
+    const aspectClass = (ratio: AspectRatio) => ratio === '9:16' ? 'aspect-[9/16]' : ratio === '1:1' ? 'aspect-square' : 'aspect-video';
+    const visibleCaptions = showAllCaptions ? result.captions : result.captions.slice(0, 5);
+
+    return (
+        <div className="review-layout">
+            <div className="review-heading"><div><span className="eyebrow">YOUR FIRST CUT IS READY</span><h1>{title}</h1><p>Review the full story, Telugu captions and social-ready moments.</p></div><button className="button button-quiet" onClick={onStartOver}>＋ New project</button></div>
+            <section className="panel main-preview">
+                <div className="section-heading"><div><span className="eyebrow">LONG-FORM CUT · 720P</span><h2>The full story</h2></div><a className="button button-primary compact-button" href={result.videoDownloadUrl} download><DownloadIcon className="h-4 w-4" /> Download video</a></div>
+                <video src={result.videoUrl} controls preload="metadata" className="long-video-preview" />
+                <p className="media-disclaimer">Full clips are compiled in your chosen order. Fine-grained trims and burned-in caption styling are coming next.</p>
+            </section>
+            <div className="review-columns">
+                <section className="panel chapters-panel">
+                    <div className="section-heading"><div><span className="eyebrow">A STORY, IN CHAPTERS</span><h2>Moments worth keeping</h2></div><span className="count-pill">{result.chapters.length}</span></div>
+                    {result.chapters.length ? <div className="chapter-list">{result.chapters.map(chapter => <article className="chapter-row" key={chapter.id}>
+                        <img src={chapter.thumbnailUrl} alt="" loading="lazy" />
+                        <div><strong>{chapter.title}</strong><span>{chapter.startTime} – {chapter.endTime}</span></div>
+                    </article>)}</div> : <div className="empty-inline">No chapters were detected in this batch.</div>}
+                    <div className="caption-heading"><div><span className="eyebrow">TELUGU & ENGLISH</span><h3>Caption transcript</h3></div>{result.captions.length > 5 && <button className="text-button" onClick={() => setShowAllCaptions(value => !value)}>{showAllCaptions ? 'Show less' : `Show all ${result.captions.length}`}</button>}</div>
+                    {result.captions.length ? <div className="caption-list">{visibleCaptions.map((cue, index) => <div className="caption-row" key={`${cue.start}-${index}`}><span>{formatDuration(cue.start)}</span><p>{cue.text}</p></div>)}</div> : <div className="empty-inline">No clear dialogue was detected. Export an empty SRT or try a clip with cleaner speech.</div>}
+                    <a href={result.captionsUrl} className="button button-secondary captions-download" download><DownloadIcon className="h-4 w-4" /> Export subtitles (.srt)</a>
+                </section>
+                <section className="panel reels-panel">
+                    <div className="section-heading"><div><span className="eyebrow">READY FOR SOCIAL</span><h2>Highlight reels</h2></div><span className="count-pill">{result.reels.length}</span></div>
+                    {result.reels.length ? <div className="reel-list">{result.reels.map(reel => <article className="reel-card" key={reel.id}>
+                        <div className={`reel-preview ${aspectClass(reel.aspectRatio)}`}><video src={reel.previewUrl} controls preload="metadata" /></div>
+                        <div className="reel-copy"><div><strong>{reel.title}</strong><span>{reel.duration}s · {reel.aspectRatio}</span></div><button className={`favorite-button ${reel.isFavorite ? 'is-favorite' : ''}`} aria-label={reel.isFavorite ? 'Remove from favorites' : 'Add to favorites'} onClick={() => onToggleFavorite(reel.id)}><StarIcon className="h-5 w-5" filled={reel.isFavorite} /></button></div>
+                        <p className="reel-hook">“{reel.hook}”</p>
+                        <a href={reel.downloadUrl} className="reel-download" download><DownloadIcon className="h-4 w-4" /> Download reel</a>
+                    </article>)}</div> : <div className="empty-inline">No highlight moments were found in this batch.</div>}
+                    {result.reels.length > 1 && <button onClick={onDownloadAllReels} className="button button-secondary all-reels-button"><DownloadIcon className="h-4 w-4" /> Download all reels</button>}
+                </section>
+            </div>
+            <div className="review-footer"><span>Made with Katha <b>✦</b> Built for stories in every language.</span><a href="mailto:hello@katha.studio">Share feedback</a></div>
+        </div>
+    );
+};
 
 export default function App() {
     const [appState, setAppState] = useState<AppState>(AppState.UPLOADING);
     const [files, setFiles] = useState<VideoFile[]>([]);
-    const [processingStatus, setProcessingStatus] = useState('Initializing...');
-    const [chapters, setChapters] = useState<Chapter[]>([]);
-    const [reels, setReels] = useState<ReelCandidate[]>([]);
-    const [videoUrl, setVideoUrl] = useState('');
-    const [videoDownloadUrl, setVideoDownloadUrl] = useState('');
-    const [captionsUrl, setCaptionsUrl] = useState('');
+    const [processingStatus, setProcessingStatus] = useState('Getting things ready...');
+    const [processingProgress, setProcessingProgress] = useState(0);
+    const [result, setResult] = useState<JobResult>();
     const [errorMessage, setErrorMessage] = useState('');
+    const [projectTitle, setProjectTitle] = useState('My Telugu story');
+    const [uploadProgress, setUploadProgress] = useState(0);
 
     const handleFilesAdded = useCallback((newFiles: VideoFile[]) => {
-        if (files.length + newFiles.length > 5) {
-            newFiles.forEach(file => URL.revokeObjectURL(file.previewUrl));
-            setErrorMessage('You can upload up to 5 clips per project.');
-            return;
-        }
-        setErrorMessage('');
-        setAppState(AppState.CONFIGURING);
-        setFiles(prev => [...prev, ...newFiles]);
-    }, [files]);
-
-    const handleRemoveFile = useCallback((id: string) => {
-        const removed = files.find(file => file.id === id);
-        if (removed) URL.revokeObjectURL(removed.previewUrl);
-        const remaining = files.filter(file => file.id !== id);
-        setFiles(remaining);
-        if (!remaining.length) setAppState(AppState.UPLOADING);
-    }, [files]);
-    
-    const handleToggleFavoriteReel = useCallback((id: string) => {
-        setReels(prevReels => 
-            prevReels.map(reel => 
-                reel.id === id ? { ...reel, isFavorite: !reel.isFavorite } : reel
-            )
-        );
+        setFiles(previous => {
+            if (previous.length + newFiles.length > MAX_CLIPS) {
+                newFiles.forEach(file => URL.revokeObjectURL(file.previewUrl));
+                setErrorMessage(`This project supports up to ${MAX_CLIPS} clips.`);
+                return previous;
+            }
+            setErrorMessage('');
+            setAppState(AppState.CONFIGURING);
+            return [...previous, ...newFiles];
+        });
     }, []);
 
-    const startProcessing = useCallback(async (prompt: string, preset: string, music: { style: string; file?: File }, reelAspectRatio: '9:16' | '1:1' | '16:9', reelDuration: 15 | 30 | 60) => {
+    const removeFile = useCallback((id: string) => {
+        setFiles(previous => {
+            const removed = previous.find(file => file.id === id);
+            if (removed) URL.revokeObjectURL(removed.previewUrl);
+            const remaining = previous.filter(file => file.id !== id);
+            if (!remaining.length) setAppState(AppState.UPLOADING);
+            return remaining;
+        });
+    }, []);
+
+    const moveFile = useCallback((index: number, direction: -1 | 1) => {
+        setFiles(previous => {
+            const nextIndex = index + direction;
+            if (nextIndex < 0 || nextIndex >= previous.length) return previous;
+            const next = [...previous];
+            [next[index], next[nextIndex]] = [next[nextIndex], next[index]];
+            return next;
+        });
+    }, []);
+
+    const startProcessing = useCallback(async (settings: {
+        prompt: string; preset: string; title: string; music?: File; aspectRatio: AspectRatio; duration: ReelDuration; reelCount: number;
+    }) => {
         setAppState(AppState.PROCESSING);
         setErrorMessage('');
-        setProcessingStatus('Uploading clips...');
+        setProjectTitle(settings.title);
+        setProcessingProgress(0);
+        setProcessingStatus('Uploading your clips...');
+        setUploadProgress(0);
+
         try {
             const form = new FormData();
             files.forEach(({ file }) => form.append('clips', file));
-            if (music.file) form.append('music', music.file);
-            form.append('prompt', prompt || `Use the ${preset || 'natural'} style. Identify clear chapters, Telugu speech, and engaging highlight moments.`);
-            form.append('preset', preset);
-            form.append('musicStyle', music.style);
-            form.append('aspectRatio', reelAspectRatio);
-            form.append('duration', String(reelDuration));
-            form.append('reelsToGenerate', '3');
+            if (settings.music) form.append('music', settings.music);
+            form.append('prompt', `${settings.prompt}\nEditing style: ${settings.preset}`);
+            form.append('preset', settings.preset);
+            form.append('title', settings.title);
+            form.append('aspectRatio', settings.aspectRatio);
+            form.append('duration', String(settings.duration));
+            form.append('reelsToGenerate', String(settings.reelCount));
 
             const created = await new Promise<{ id: string }>((resolve, reject) => {
                 const request = new XMLHttpRequest();
                 request.open('POST', '/api/jobs');
                 request.upload.onprogress = event => {
                     if (event.lengthComputable) {
-                        setProcessingStatus(`Uploading clips (${Math.round(event.loaded / event.total * 100)}%)...`);
+                        const progress = Math.round(event.loaded / event.total * 100);
+                        setUploadProgress(progress);
+                        setProcessingProgress(Math.round(progress * 0.15));
+                        setProcessingStatus(`Uploading your footage · ${progress}%`);
                     }
                 };
                 request.onload = () => {
-                    const result = JSON.parse(request.responseText || '{}');
-                    if (request.status >= 200 && request.status < 300) resolve(result);
-                    else reject(new Error(result.error || 'Could not upload clips.'));
+                    let response: { id?: string; error?: string };
+                    try { response = JSON.parse(request.responseText || '{}'); }
+                    catch { reject(new Error('The server returned an unreadable response.')); return; }
+                    if (request.status >= 200 && request.status < 300 && response.id) resolve({ id: response.id });
+                    else reject(new Error(response.error || 'Could not upload clips.'));
                 };
                 request.onerror = () => reject(new Error('Network error while uploading clips.'));
+                request.onabort = () => reject(new Error('The upload was interrupted.'));
                 request.send(form);
             });
 
-            files.forEach(file => URL.revokeObjectURL(file.previewUrl));
-            setFiles([]);
-            let job: {
-                state: string;
-                status: string;
-                error?: string;
-                result?: {
-                    chapters: Chapter[];
-                    reels: ReelCandidate[];
-                    videoUrl: string;
-                    videoDownloadUrl: string;
-                    captionsUrl: string;
-                };
-            };
+            let job: { state: string; status: string; progress: number; error?: string; result?: JobResult };
             do {
-                await new Promise(resolve => window.setTimeout(resolve, 1000));
+                await new Promise(resolve => window.setTimeout(resolve, 1200));
                 const response = await fetch(`/api/jobs/${created.id}`);
-                const result = await response.json();
-                if (!response.ok) throw new Error(result.error || 'Could not retrieve job status.');
-                job = result;
-                setProcessingStatus(result.status);
+                const status = await response.json();
+                if (!response.ok) throw new Error(status.error || 'Could not retrieve job status.');
+                job = status;
+                setProcessingStatus(status.status);
+                setProcessingProgress(Math.max(15, status.progress || 0));
                 if (job.state === 'failed') throw new Error(job.error || 'Video processing failed.');
             } while (job.state === 'processing');
 
             if (!job.result) throw new Error('The video job completed without output files.');
-            setChapters(job.result.chapters);
-            setReels(job.result.reels);
-            setVideoUrl(job.result.videoUrl);
-            setVideoDownloadUrl(job.result.videoDownloadUrl);
-            setCaptionsUrl(job.result.captionsUrl);
+            setResult(job.result);
+            setProcessingProgress(100);
+            files.forEach(file => URL.revokeObjectURL(file.previewUrl));
+            setFiles([]);
             setAppState(AppState.REVIEWING);
         } catch (error) {
             setErrorMessage(error instanceof Error ? error.message : 'Video processing failed.');
-            setAppState(AppState.CONFIGURING);
+            setAppState(files.length ? AppState.CONFIGURING : AppState.UPLOADING);
         }
     }, [files]);
 
     const handleDownloadAllReels = useCallback(() => {
-        reels.forEach((reel, index) => {
+        result?.reels.forEach((reel, index) => {
             window.setTimeout(() => {
                 const link = document.createElement('a');
                 link.href = reel.downloadUrl;
@@ -440,45 +423,55 @@ export default function App() {
                 document.body.appendChild(link);
                 link.click();
                 link.remove();
-            }, index * 250);
+            }, index * 300);
         });
-    }, [reels]);
+    }, [result]);
 
-    const renderContent = () => {
-        switch (appState) {
-            case AppState.UPLOADING:
-            case AppState.CONFIGURING:
-                 return (
-                    <div className="container mx-auto px-4 py-8">
-                        {files.length === 0 ? (
-                           <FileUploader onFilesAdded={handleFilesAdded} onError={setErrorMessage} />
-                        ) : (
-                            <div className="max-w-3xl mx-auto">
-                                <h2 className="text-2xl font-bold mb-4">Your Clips</h2>
-                                <div className="space-y-3 mb-8">
-                                    {files.map(f => <UploadedFileItem key={f.id} file={f} onRemove={handleRemoveFile} />)}
-                                </div>
-                                {appState === AppState.CONFIGURING && <ConfigurationScreen onStartProcessing={startProcessing} clipsCount={files.length} />}
-                            </div>
-                        )}
-                    </div>
-                );
-            case AppState.PROCESSING:
-                return <ProcessingScreen status={processingStatus} />;
-            case AppState.REVIEWING:
-                return <ReviewScreen chapters={chapters} reels={reels} videoUrl={videoUrl} videoDownloadUrl={videoDownloadUrl} captionsUrl={captionsUrl} onToggleFavorite={handleToggleFavoriteReel} onDownloadAllReels={handleDownloadAllReels} />;
-            default:
-                return null;
-        }
-    }
+    const handleStartOver = () => {
+        setResult(undefined);
+        setProjectTitle('My Telugu story');
+        setFiles([]);
+        setErrorMessage('');
+        setAppState(AppState.UPLOADING);
+    };
+
+    const handleToggleFavorite = useCallback((id: string) => {
+        setResult(previous => previous ? {
+            ...previous,
+            reels: previous.reels.map(reel => reel.id === id ? { ...reel, isFavorite: !reel.isFavorite } : reel),
+        } : previous);
+    }, []);
+
+    const clipCountLabel = useMemo(() => `${files.length} ${files.length === 1 ? 'clip' : 'clips'}`, [files.length]);
 
     return (
-        <div className="min-h-screen bg-gray-900 text-white">
-            <Header />
-            <main>
-                {errorMessage && <p role="alert" className="max-w-3xl mx-auto mt-6 px-4 text-center text-red-300">{errorMessage}</p>}
-                {renderContent()}
+        <div className="studio-shell">
+            <Header appState={appState} />
+            <main className="studio-main">
+                {errorMessage && <div className="error-banner" role="alert"><span>!</span><p>{errorMessage}</p><button aria-label="Dismiss error" onClick={() => setErrorMessage('')}>×</button></div>}
+                {(appState === AppState.UPLOADING || appState === AppState.CONFIGURING) && (
+                    <>
+                        <section className="welcome-heading">
+                            <div><span className="eyebrow">A LITTLE MAGIC. A LOT OF YOU.</span><h1>Your stories deserve<br /><em>a bigger stage.</em></h1><p>Turn raw footage into a Telugu-first story and scroll-stopping reels. You direct. Katha does the heavy lifting.</p></div>
+                            <div className="welcome-badge"><span>కథ</span><small>YOUR STORY<br />YOUR WAY</small></div>
+                        </section>
+                        <div className="workspace-grid">
+                            <div className="workspace-main">
+                                <ClipList files={files} onRemove={removeFile} onMove={moveFile} onFilesAdded={handleFilesAdded} onError={setErrorMessage} />
+                                {files.length > 0 && <ConfigurationScreen clipsCount={files.length} onStart={startProcessing} disabled={appState === AppState.PROCESSING} />}
+                            </div>
+                            <aside className="studio-sidebar">
+                                <section className="sidebar-card project-summary"><span className="eyebrow">THIS PROJECT</span><strong>{clipCountLabel}</strong><p>Up to 5 clips · 500 MB each</p><div className="summary-divider" /><span className="summary-note"><span className="online-dot" /> Your files are private</span></section>
+                                <section className="sidebar-card creator-note"><span className="note-icon">“</span><span className="eyebrow">MADE FOR YOUR VOICE</span><p>Telugu speech, local context, and the little moments that make your story yours.</p><span className="note-script">నీ కథ. నీ స్వరం.</span></section>
+                                <section className="sidebar-card safety-note"><strong>Before you begin</strong><p>Clips are uploaded for Gemini analysis and FFmpeg editing. Job files are automatically deleted after 24 hours.</p><a href="https://ai.google.dev/gemini-api/terms" target="_blank" rel="noreferrer">How AI processing works ↗</a></section>
+                            </aside>
+                        </div>
+                    </>
+                )}
+                {appState === AppState.PROCESSING && <ProcessingScreen status={processingStatus} progress={processingProgress} />}
+                {appState === AppState.REVIEWING && result && <ReviewScreen result={result} title={projectTitle} onToggleFavorite={handleToggleFavorite} onDownloadAllReels={handleDownloadAllReels} onStartOver={handleStartOver} />}
             </main>
+            <footer className="studio-footer"><span>✦ KATHA STUDIO</span><span>Thoughtfully made for stories in Telugu and beyond.</span><span>VERSION 01 · CREATOR PREVIEW</span></footer>
         </div>
     );
 }
