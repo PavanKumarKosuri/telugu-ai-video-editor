@@ -67,6 +67,12 @@ function updateJob(job, progress, status) {
   job.status = status;
 }
 
+async function moveUpload(file, destination) {
+  const source = path.join(storageRoot, path.basename(file.filename));
+  await fs.rename(source, destination);
+  return { ...file, path: destination };
+}
+
 async function runFfmpeg(args) {
   try {
     await execFileAsync('ffmpeg', args, { timeout: 20 * 60 * 1000, maxBuffer: 10 * 1024 * 1024 });
@@ -348,14 +354,12 @@ app.post('/api/jobs', (request, response, next) => {
         const storedClips = [];
         for (const [index, file] of clips.entries()) {
           const destination = path.join(directory, `clip-${index}${fileExtension(file.mimetype)}`);
-          await fs.rename(file.path, destination);
-          storedClips.push({ ...file, path: destination });
+          storedClips.push(await moveUpload(file, destination));
         }
         let storedMusic;
         if (music) {
           const destination = path.join(directory, `music${fileExtension(music.mimetype)}`);
-          await fs.rename(music.path, destination);
-          storedMusic = { ...music, path: destination };
+          storedMusic = await moveUpload(music, destination);
         }
         const aspectRatio = ['9:16', '1:1', '16:9'].includes(request.body.aspectRatio) ? request.body.aspectRatio : '9:16';
         const requestedDuration = Number(request.body.duration);
