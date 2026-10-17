@@ -119,7 +119,7 @@ const ClipList = ({ files, onRemove, onMove, onFilesAdded, onError }: {
     onError: (message: string) => void;
 }) => {
     const [durations, setDurations] = useState<Record<string, number>>({});
-    const totalDuration = Object.values(durations).reduce((sum, duration) => sum + duration, 0);
+    const totalDuration = (Object.values(durations) as number[]).reduce((sum, duration) => sum + duration, 0);
 
     return (
         <section className="panel clip-panel">
