@@ -397,7 +397,8 @@ app.use((error, _request, response, _next) => {
   const status = error instanceof multer.MulterError
     ? error.code === 'LIMIT_FILE_SIZE' ? 413 : 400
     : error.status || 500;
-  response.status(status).json({ error: status === 500 && error.message === 'Internal Server Error' ? error.message : error.message || 'Request failed.' });
+  if (status >= 500) console.error('API request failed:', error);
+  response.status(status).json({ error: status >= 500 ? 'Internal server error.' : error.message || 'Request failed.' });
 });
 
 const cleanupInterval = setInterval(() => {
