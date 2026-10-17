@@ -5,6 +5,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { promisify } from 'node:util';
 import express from 'express';
+import rateLimit from 'express-rate-limit';
 import multer from 'multer';
 import { analyzeVideo } from './gemini.js';
 import { clampInterval, createSrt } from './media.js';
@@ -23,13 +24,31 @@ const videoMimeTypes = new Set([
   'video/x-msvideo',
   'video/3gpp',
 ]);
+const safeExtensions = new Map([
+  ['video/mp4', '.mp4'],
+  ['video/quicktime', '.mov'],
+  ['video/webm', '.webm'],
+  ['video/x-matroska', '.mkv'],
+  ['video/x-msvideo', '.avi'],
+  ['video/3gpp', '.3gp'],
+  ['audio/mpeg', '.mp3'],
+  ['audio/mp4', '.m4a'],
+  ['audio/aac', '.aac'],
+  ['audio/wav', '.wav'],
+  ['audio/x-wav', '.wav'],
+  ['audio/ogg', '.ogg'],
+  ['audio/webm', '.webm'],
+  ['audio/flac', '.flac'],
+]);
+
+const fileExtension = mimeType => safeExtensions.get(mimeType) || '.audio';
 
 await fs.mkdir(storageRoot, { recursive: true });
 
 const upload = multer({
   storage: multer.diskStorage({
     destination: storageRoot,
-    filename: (_request, file, callback) => callback(null, `${crypto.randomUUID()}${path.extname(file.originalname).toLowerCase()}`),
+    filename: (_request, file, callback) => callback(null, `${crypto.randomUUID()}${fileExtension(file.mimetype)}`),
   }),
   limits: { fileSize: maxUploadBytes, files: 6, fields: 8 },
   fileFilter: (_request, file, callback) => {
@@ -299,6 +318,13 @@ async function buildJob(job, clips, musicFile, options) {
   };
 }
 
+app.use(rateLimit({
+  windowMs: 60_000,
+  limit: 300,
+  standardHeaders: 'draft-8',
+  legacyHeaders: false,
+}));
+
 app.get('/api/health', (_request, response) => response.json({ status: 'ok' }));
 
 app.post('/api/jobs', (request, response, next) => {
@@ -321,13 +347,13 @@ app.post('/api/jobs', (request, response, next) => {
         await fs.mkdir(directory, { recursive: true });
         const storedClips = [];
         for (const [index, file] of clips.entries()) {
-          const destination = path.join(directory, `clip-${index}${path.extname(file.originalname).toLowerCase()}`);
+          const destination = path.join(directory, `clip-${index}${fileExtension(file.mimetype)}`);
           await fs.rename(file.path, destination);
           storedClips.push({ ...file, path: destination });
         }
         let storedMusic;
         if (music) {
-          const destination = path.join(directory, `music${path.extname(music.originalname).toLowerCase()}`);
+          const destination = path.join(directory, `music${fileExtension(music.mimetype)}`);
           await fs.rename(music.path, destination);
           storedMusic = { ...music, path: destination };
         }
